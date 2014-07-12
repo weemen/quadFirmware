@@ -122,14 +122,8 @@ void setup()
 //    motors.set_min_throttle(88); //88 in minimum && 1100 +/- max
     motors.Init();      // initialise motors
 //
-    if (rc3.radio_min == 0) {
-	    // cope with AP_Param not being loaded
-	    rc3.radio_min = 1000;
-    }
-    if (rc3.radio_max == 0) {
-	    // cope with AP_Param not being loaded
-	    rc3.radio_max = 2000;
-    }
+    if (rc3.radio_min == 0) rc3.radio_min = 1000;
+    if (rc3.radio_max == 0) rc3.radio_max = 2000;
 
     motors.enable();
     motors.output_min();
@@ -168,7 +162,6 @@ static void uartcRx_loop()
 {
     static int counter = 0;
     static char buffer[256];
-    char str[128];
     char *ptr;
     int value;
 
@@ -186,29 +179,26 @@ static void uartcRx_loop()
       if(value == '\n') {
         buffer[counter] = '\0';
         hal.console->printf("FULL Message recieved: %s\n", buffer);
-//        return;
-//        update_throttle(1170);
-//        int bufferIndex;
-//        char *p;
-//        char *commandAndParameterList[10];
-//        bufferIndex = 0;
-//        p = strtok (buffer,"/");  
-//        while (p != NULL)
-//        {
-//          commandAndParameterList[bufferIndex++] = p;
-//          p = strtok (NULL, "/");
-//        }
-//        
-//        for (bufferIndex=0;bufferIndex<3; ++bufferIndex) {
-//          if (commandAndParameterList[bufferIndex] == "thr") {
-//              update_throttle((int) commandAndParameterList[++bufferIndex]);
-//          }
-//        }
-//
+
+        char *tok = NULL;
+        char *str[10];
+        int  tokenIndex = 0;
+        tok = strtok(buffer, ":");
+        while (tok) {
+            str[tokenIndex] = strdup(tok);
+            hal.console->printf("Token: %s\n", tok);
+            tok = strtok(NULL, ":");
+            tokenIndex++;
+        }
+ 
+        hal.console->printf("FIRST TOKEN: %s\n",str[0]);
+        if (strcmp("thr",str[0]) == 0) {
+          hal.console->printf("MATCH\n");
+          //update_throttle((int) commandAndParameterList[++bufferIndex]);
+        }
+
       }
     }
-    
-//    memset(buffer, 0, sizeof(buffer));
 }
 
 void update_throttle(int throttle)
