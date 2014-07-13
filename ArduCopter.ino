@@ -183,12 +183,39 @@ static void uartcRx_loop()
         if (strcmp("thr",command) == 0) {
             
           //fetch parameters from buffer (4 characters from position 5 till 8)
+          // substract 500 to get input value
+          //throttle no substract always 4 positions
+          //yaw    -500 (3 pos)
+          //pitch  -500 (3 pos)
+          //roll   -500 (3 pos)
+          
           char paramThrottle[5];
           memcpy( paramThrottle, &buffer[4], 4);
           paramThrottle[4] = '\0';
           int throttle = atoi(paramThrottle);
+          
+          char paramYaw[4];
+          memcpy( paramYaw, &buffer[8], 3);
+          paramYaw[3] = '\0';
+          int yaw = (atoi(paramYaw) - 500);
+          
+          char paramPitch[4];
+          memcpy( paramPitch, &buffer[11], 3);
+          paramPitch[3] = '\0';
+          int pitch = (atoi(paramPitch) - 500);
+          
+          char paramRoll[4];
+          memcpy( paramRoll, &buffer[14], 3);
+          paramRoll[3] = '\0';
+          int roll = (atoi(paramRoll) - 500);
+          
           hal.console->printf("PARAM1:  %i\n", throttle);
+          hal.console->printf("PARAM2:  %i\n", yaw);
+          hal.console->printf("PARAM3:  %i\n", pitch);
+          hal.console->printf("PARAM4:  %i\n", roll);
+          
           update_throttle(throttle);
+          //update_movement(throttle, yaw, pitch, roll)
         }
  
         buffer[0]  = '\0';
@@ -209,7 +236,7 @@ void update_throttle(int throttle)
   //motors.armed(false);
 }
 
-void movement(int rcThrottle, int rcPitch, int rcRoll, int rcYaw)
+void update_movement(int rcThrottle, int rcYaw, int rcPitch, int rcRoll)
 {
   // Ask MPU6050 for orientation
   if (rcThrottle < 1170) {
