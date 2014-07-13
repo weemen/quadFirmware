@@ -165,45 +165,42 @@ static void uartcRx_loop()
     char *ptr;
     int value;
 
-    // wait for user to enter something
-    int n = hal.uartC->available();
-
-    // get character from user
-//    value = hal.console->read();
-
     // test motors
-    for(int i = n; i > 0; i--) {
+    while(hal.uartC->available()) {
       value = hal.uartC->read();
       buffer[counter] = value;
-      counter++;
+      counter = counter + 1;
+      
       if(value == '\n') {
         buffer[counter] = '\0';
         hal.console->printf("FULL Message recieved: %s\n", buffer);
-
-        char *tok = NULL;
-        char *str[10];
-        int  tokenIndex = 0;
-        tok = strtok(buffer, ":");
-        while (tok) {
-            str[tokenIndex] = strdup(tok);
-            hal.console->printf("Token: %s\n", tok);
-            tok = strtok(NULL, ":");
-            tokenIndex++;
+        
+        char command[4];
+        memcpy( command, &buffer[0], 3 );
+        command[3] = '\0';
+        hal.console->printf("BUFFER: %s\n", command);
+        
+        if (strcmp("thr",command) == 0) {
+            
+          //fetch parameters from buffer (4 characters from position 5 till 8)
+          char paramThrottle[5];
+          memcpy( paramThrottle, &buffer[4], 4);
+          paramThrottle[4] = '\0';
+          int throttle = atoi(paramThrottle);
+          hal.console->printf("PARAM1:  %i\n", throttle);
+          update_throttle(throttle);
         }
  
-        hal.console->printf("FIRST TOKEN: %s\n",str[0]);
-        if (strcmp("thr",str[0]) == 0) {
-          hal.console->printf("MATCH\n");
-          //update_throttle((int) commandAndParameterList[++bufferIndex]);
-        }
-
+        buffer[0]  = '\0';
+        counter    = 0;
+        hal.uartC->flush();
       }
     }
 }
 
 void update_throttle(int throttle)
 {
-  hal.console->printf("Throttle will be updated to value %d\n", throttle);
+  //hal.console->printf("Throttle will be updated to value %d\n", throttle);
   motors.armed(true);
   hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[0]), throttle);
   hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[1]), throttle);
@@ -295,10 +292,11 @@ void update_gps()
         lat   = (float)gps.latitude / T7, BASE_DEC;
         longt = (float)gps.longitude / T7, BASE_DEC;
         gps.new_data = 0; // We have readed the data
-        hal.console->printf("gps:%.6f %.6f\n",lat, longt);
+//        hal.console->printf("gps:%.6f %.6f\n",lat, longt);
         hal.uartC->printf("gps:%.6f %.6f\n",lat, longt);
     }
 }
 
 AP_HAL_MAIN();
+
 
