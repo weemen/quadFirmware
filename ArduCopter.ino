@@ -106,46 +106,22 @@ PID pids[6];
 #define PID_YAW_RATE 4
 #define PID_YAW_STAB 5
 
+#define ENABLE_GPS 0
+#define ENABLE_COMPASS 0
 // setup
 void setup()
 {
-    hal.console->println("AP_Motors library test ver 1.0");
-    
-//    if (!ins.wait_for_sample(1000)) {
-//      hal.console->println("whoops AP_InertialSensor_MPU6000 - accel/gyro chip");
-//    }
+    hal.console->println("Intialzing Ardupilot");
+    initializeGyro();
+    initializeEngines();
+    openingUartPorts();
+    initializeCompass();
+    intializeGPS();
+    hal.console->println("Intialzing Complete");
 
-
-//    // motor initialisation
-    motors.set_update_rate(490);
-    motors.set_frame_orientation(AP_MOTORS_X_FRAME);
-//    motors.set_min_throttle(88); //88 in minimum && 1100 +/- max
-    motors.Init();      // initialise motors
-//
-    if (rc3.radio_min == 0) rc3.radio_min = 1000;
-    if (rc3.radio_max == 0) rc3.radio_max = 2000;
-
-    motors.enable();
-    motors.output_min();
-//
-//    hal.uartA->begin(115200);
-    hal.uartC->begin(115200);
-//    
 //    compass.set_offsets(0,0,0); // set offsets to account for surrounding interference
-//    compass.set_declination(ToRad(0.0)); // set local difference between magnetic north and true north
-
-    hal.console->println("Compass library test");
+//    compass.set_declination(ToRad(0.0)); // set local difference between magnetic north and true nort    
     
-//    if (!compass.init()) {
-//        hal.console->println("compass initialisation failed!");
-//        while (1) ;
-//    }
-    
-    hal.uartB->begin(38400);
-    gps.print_errors = true;
-
-//    hal.console->println("GPS UBLOX library test");
-    gps.init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G);       // GPS Initialization
 }
 
 // loop
@@ -154,9 +130,110 @@ void loop()
     
     uartcRx_loop();   //read incoming data from UartC
 //    update_compass(); //update compas
-    update_gps();     //update gps
+//    update_gps();     //update gps
 }
 
+void initializeGyro()
+{
+    hal.console->println("\n ------------- Intialzing Gyro ----------------");
+    
+    hal.console->println(" - stop parameter from blocking SPI bus");
+    // we need to stop the barometer from holding the SPI bus
+    hal.gpio->pinMode(40, GPIO_OUTPUT);
+    hal.gpio->write(40, 1);
+
+    hal.console->println(" - initialize inertial sensor");
+    ins.init(AP_InertialSensor::COLD_START, AP_InertialSensor::RATE_100HZ);
+    
+    hal.console->println(""); //improves readabilty
+    
+    hal.console->println(" - wait for inertial sensor data");
+    if (!ins.wait_for_sample(1000)) {
+      hal.console->println(" - AP_InertialSensor_MPU6000 accel/gyro chip seems to have serious problems, no init data recieved");
+    } else {
+      hal.console->println(" - AP_InertialSensor_MPU6000 accel/gyro OK");
+    }
+
+    hal.console->println("\n ---------------------------------------------\n");
+}
+
+void initializeEngines()
+{
+    hal.console->println("\n ----------- Intialzing Engines --------------");
+    
+    int update_rate = 490;
+    int minimal_throttle   = 88;
+    int radio_min          = 1000;
+    int radio_max          = 2000;
+    
+    // motor initialisation
+    motors.set_update_rate(update_rate);
+    motors.set_frame_orientation(AP_MOTORS_X_FRAME);
+    motors.set_min_throttle(minimal_throttle); //88 in minimum && 1100 +/- max
+    motors.Init();      // initialise motors
+
+    if (rc3.radio_min == 0) rc3.radio_min = radio_min;
+    if (rc3.radio_max == 0) rc3.radio_max = radio_max;
+
+    hal.console->printf(" - setting engine update rate: %d\n", update_rate);
+    hal.console->printf(" - setting frame orientation: %d (0 = PLUS-FRAME | 1 = X-FRAME)\n", AP_MOTORS_X_FRAME);
+    hal.console->printf(" - setting engine minimal throttle: %d\n", minimal_throttle);
+    hal.console->printf(" - setting minimal radio value: %d\n", radio_min);
+    hal.console->printf(" - setting maximal radio value: %d\n", radio_max);
+    
+    motors.enable();
+    
+    hal.console->println(" - engines enabled");
+    motors.output_min();
+    hal.console->println(" - engines set to minimal output");
+    hal.console->println("\n ---------------------------------------------\n");
+}
+
+void openingUartPorts()
+{
+//   long uartASpeed = 115200;
+   long uartCSpeed = 115200;
+   
+   hal.console->println("\n ----------- Opening UART ports --------------");
+//   hal.console->printf(" - opening UART-A at %lu Baud\n",uartASpeed);
+//   hal.uartA->begin(uartASpeed);
+   hal.console->printf(" - opening UART-C at %lu Baud\n",uartCSpeed);
+   hal.uartC->begin(uartCSpeed);
+   hal.console->println("\n ---------------------------------------------\n");
+}
+
+void initializeCompass()
+{
+   hal.console->println("\n ----------- Initialize Compass --------------");
+   if (ENABLE_COMPASS == 1) {
+      hal.console->println(" - Compass library test");
+      if (!compass.init()) {
+        hal.console->println(" - compass initialisation failed!");
+        while (1) ;
+      }
+   } else {
+     hal.console->println(" - compass is not enabled");
+   }
+
+   hal.console->println("\n ---------------------------------------------\n");
+}
+
+void intializeGPS()
+{
+   hal.console->println("\n ------------- Initialize GPS ----------------");
+   
+   if (ENABLE_GPS == 1) {
+     hal.uartB->begin(38400);
+     gps.print_errors = true;
+
+     hal.console->println(" - GPS UBLOX library test");
+     gps.init(hal.uartB, GPS::GPS_ENGINE_AIRBORNE_4G);       // GPS Initialization
+   } else {
+     hal.console->println(" - GPS is not enabled");
+   }
+
+   hal.console->println("\n ---------------------------------------------\n");
+}
 
 static void uartcRx_loop()
 {
