@@ -108,17 +108,46 @@ PID pids[6];
 
 #define ENABLE_GPS 0
 #define ENABLE_COMPASS 0
+
+// enum for ESC CALIBRATION
+enum ESCCalibrationModes {
+    ESCCAL_NONE = 0,
+    ESCCAL_PASSTHROUGH_IF_THROTTLE_HIGH = 1,
+    ESCCAL_PASSTHROUGH_ALWAYS = 2,
+    ESCCAL_AUTO = 3
+};
+
+#define wrap_180(x) (x < -180 ? x+360 : (x > 180 ? x - 360: x))
+
 // setup
 void setup()
 {
-    hal.console->println("Intialzing Ardupilot");
+    // PID Configuration
+    pids[PID_PITCH_RATE].kP(0.7);
+    pids[PID_PITCH_RATE].kI(1);
+    pids[PID_PITCH_RATE].imax(50);
+    
+    pids[PID_ROLL_RATE].kP(0.7);
+    pids[PID_ROLL_RATE].kI(1);
+    pids[PID_ROLL_RATE].imax(50);
+    
+    pids[PID_YAW_RATE].kP(2.7);
+    pids[PID_YAW_RATE].kI(1);
+    pids[PID_YAW_RATE].imax(50);
+    
+    pids[PID_PITCH_STAB].kP(4.5);
+    pids[PID_ROLL_STAB].kP(4.5);
+    pids[PID_YAW_STAB].kP(10);
+    
+    hal.console->println("Intialzing Ardupilot");    
     initializeGyro();
     initializeEngines();
     openingUartPorts();
-    initializeCompass();
-    intializeGPS();
+//    initializeCompass();
+//    intializeGPS();
     hal.console->println("Intialzing Complete");
-
+//
+//    hal.uartC->println("this is a test line on UART C\n");
 //    compass.set_offsets(0,0,0); // set offsets to account for surrounding interference
 //    compass.set_declination(ToRad(0.0)); // set local difference between magnetic north and true nort    
     
@@ -191,12 +220,12 @@ void initializeEngines()
 
 void openingUartPorts()
 {
-//   long uartASpeed = 115200;
+   long uartASpeed = 115200;
    long uartCSpeed = 115200;
    
    hal.console->println("\n ----------- Opening UART ports --------------");
-//   hal.console->printf(" - opening UART-A at %lu Baud\n",uartASpeed);
-//   hal.uartA->begin(uartASpeed);
+   hal.console->printf(" - opening UART-A at %lu Baud\n",uartASpeed);
+   hal.uartA->begin(uartASpeed);
    hal.console->printf(" - opening UART-C at %lu Baud\n",uartCSpeed);
    hal.uartC->begin(uartCSpeed);
    hal.console->println("\n ---------------------------------------------\n");
@@ -247,15 +276,15 @@ static void uartcRx_loop()
       value = hal.uartC->read();
       buffer[counter] = value;
       counter = counter + 1;
-      
+
       if(value == '\n') {
         buffer[counter] = '\0';
-        hal.console->printf("FULL Message recieved: %s\n", buffer);
+//        hal.console->printf("FULL Message recieved: %s\n", buffer);
         
         char command[4];
         memcpy( command, &buffer[0], 3 );
         command[3] = '\0';
-        hal.console->printf("BUFFER: %s\n", command);
+//        hal.console->printf("BUFFER: %s\n", command);
         
         if (strcmp("thr",command) == 0) {
             
@@ -286,13 +315,11 @@ static void uartcRx_loop()
           paramRoll[3] = '\0';
           int roll = (atoi(paramRoll) - 500);
           
-          hal.console->printf("PARAM1:  %i\n", throttle);
-          hal.console->printf("PARAM2:  %i\n", yaw);
-          hal.console->printf("PARAM3:  %i\n", pitch);
-          hal.console->printf("PARAM4:  %i\n", roll);
           
-          update_throttle(throttle);
-          //update_movement(throttle, yaw, pitch, roll)
+//          hal.console->printf("Throttle: %i \tYAW: %i \tPITCH: %i \tROLL: %i\n", throttle, yaw, pitch, roll);
+          
+          //update_throttle(throttle);
+          update_movement(throttle, yaw, pitch, roll);
         }
  
         buffer[0]  = '\0';
@@ -315,10 +342,19 @@ void update_throttle(int throttle)
 
 void update_movement(int rcThrottle, int rcYaw, int rcPitch, int rcRoll)
 {
+  static float yaw_target = 0;
+  
   // Ask MPU6050 for orientation
   if (rcThrottle < 1170) {
+//    hal.console->printf("Throttle is below minimum!! Returning! \n");
+    hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[2]), rcThrottle); // Front left
+    hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[1]), rcThrottle); // back left
+    hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[0]), rcThrottle); // Front right
+    hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[3]), rcThrottle); // back right
     return;
   }
+  
+  hal.console->printf("thr: %i \t yaw: %i \t pitch: %i \t roll: %i\n", rcThrottle, rcYaw, rcPitch, rcRoll);
   
   Quaternion q;
   
@@ -326,24 +362,57 @@ void update_movement(int rcThrottle, int rcYaw, int rcPitch, int rcRoll)
   ins.update();
   //ins.quaternion.to_euler(&roll, &pitch, &yaw); //<-- WTF
   
+  Vector3f gyro     = ins.get_gyro();
   q.to_euler(&roll, &pitch, &yaw);
   
-  roll  = ToDeg(roll) ;
-  pitch = ToDeg(pitch) ;
-  yaw   = ToDeg(yaw) ;
+  roll  = ToDeg(gyro.x) ;
+  pitch = ToDeg(gyro.y) ;
+  yaw   = ToDeg(gyro.z) ;
+  
+  hal.console->printf("yaw: %i \t pitch: %i \t roll: %i\n", yaw, pitch, roll);
   
   // Ask MPU6050 for gyro data
-  Vector3f gyro     = ins.get_gyro();
   float gyroPitch   = ToDeg(gyro.y), gyroRoll = ToDeg(gyro.x), gyroYaw = ToDeg(gyro.z);
-  long pitch_output =   pids[PID_PITCH_RATE].get_pid(gyroPitch - rcPitch, 1);  
-  long roll_output  =   pids[PID_ROLL_RATE].get_pid(gyroRoll - rcRoll, 1);  
-  long yaw_output   =   pids[PID_YAW_RATE].get_pid(gyroYaw - rcYaw, 1);  
+  
+  hal.console->printf("gyroYaw: %10.7f (%10.7f)\n", gyroYaw, gyro.z);
+  hal.console->printf("gyroPitch: %10.7f (%10.7f)\n", gyroPitch, gyro.y);
+  hal.console->printf("gyroRoll: %10.7f (%10.7f)\n", gyroRoll, gyro.x);
+  
+  
+  // Stablise PIDS
+  float pitch_stab_output = pids[PID_PITCH_STAB].get_pid((float)rcPitch - pitch, 1); 
+  float roll_stab_output  = pids[PID_ROLL_STAB].get_pid((float)rcRoll - roll, 1);
+  float yaw_stab_output   = pids[PID_YAW_STAB].get_pid(wrap_180(yaw_target - yaw), 1);
+  
+  // is pilot asking for yaw change - if so feed directly to rate pid (overwriting yaw stab output)
+  if(abs(rcYaw ) > 5) {
+    yaw_stab_output = rcYaw;
+    yaw_target = yaw;   // remember this yaw for when pilot stops
+  }
+  
+  // rate PIDS
+  int pitch_output =  (int) pids[PID_PITCH_RATE].get_pid(pitch_stab_output - gyroPitch, 1);  
+  int roll_output  =  (int) pids[PID_ROLL_RATE].get_pid(roll_stab_output - gyroRoll, 1);  
+  int yaw_output   =  (int) pids[PID_YAW_RATE].get_pid(yaw_stab_output - gyroYaw, 1);  
+    
+//  float pitch_output =   (float) pids[PID_PITCH_RATE].get_pid(gyroPitch - (float) rcPitch, 1);  
+//  float roll_output  =   (float) pids[PID_ROLL_RATE].get_pid(gyroRoll - (float) rcRoll, 1);  
+//  float yaw_output   =   (float) pids[PID_YAW_RATE].get_pid(0 - (float) rcYaw, 1);  
+  
+  hal.console->printf("yaw_output: %i \n", yaw_output);
+  hal.console->printf("pitch_output: %i \n", pitch_output);
+  hal.console->printf("roll_output: %i \n", roll_output);
   
   int throttleFL    = rcThrottle - roll_output - pitch_output;
   int throttleBL    = rcThrottle - roll_output + pitch_output;
   int throttleFR    = rcThrottle + roll_output - pitch_output;
   int throttleBR    = rcThrottle + roll_output + pitch_output;
 
+  hal.console->printf("thr: %i - %i - %i = %i\n", rcThrottle, roll_output, pitch_output, throttleFL);
+  hal.console->printf("thr: %i - %i + %i = %i\n", rcThrottle, roll_output, pitch_output, throttleBL);
+  hal.console->printf("thr: %i + %i - %i = %i\n", rcThrottle, roll_output, pitch_output, throttleFR);
+  hal.console->printf("thr: %i + %i + %i = %i\n", rcThrottle, roll_output, pitch_output, throttleBR);
+  
   hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[2]), throttleFL); // Front left
   hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[1]), throttleBL); // back left
   hal.rcout->write(pgm_read_byte(&motors._motor_to_channel_map[0]), throttleFR); // Front right
@@ -352,6 +421,10 @@ void update_movement(int rcThrottle, int rcYaw, int rcPitch, int rcRoll)
 
 void update_compass()
 {
+  if (ENABLE_COMPASS == 0) {
+      return;
+  }
+    
   static float min[3], max[3], offset[3];
 
     compass.accumulate();
@@ -379,11 +452,15 @@ void update_compass()
  
     // display heading
     hal.console->printf("Heading: %.2f\n", heading);
-    hal.uartC->printf("cps:%.1f\n",heading);
+    hal.uartA->printf("cps:%.1f\n",heading);
 }
 
 void update_gps()
 {   
+    if (ENABLE_GPS == 0) {
+      return;
+    }
+    
     gps.update();
 
     if((hal.scheduler->micros() - timer) < 1600000L) {
@@ -397,7 +474,7 @@ void update_gps()
         longt = (float)gps.longitude / T7, BASE_DEC;
         gps.new_data = 0; // We have readed the data
 //        hal.console->printf("gps:%.6f %.6f\n",lat, longt);
-        hal.uartC->printf("gps:%.6f %.6f\n",lat, longt);
+        hal.uartA->printf("gps:%.6f %.6f\n",lat, longt);
     }
 }
 
